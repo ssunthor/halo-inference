@@ -76,13 +76,13 @@ QUERIES = {
             'source:* AND program:sshd AND message:"Accepted publickey"',
         ]
     },
-    "SECURITY_AUTHORIZATION_FAILURE": {
-        "label": "SECURITY_AUTHORIZATION_FAILURE", "is_security_event": True, "event_type": "Authorization", "priority": "medium",
-        "queries": [
-            'source:* AND program:sudo AND message:"user NOT in sudoers"',
-            'source:* AND program:mariadbd AND message:/.*denied.*/',
-        ]
-    },
+#    "SECURITY_AUTHORIZATION_FAILURE": {
+#        "label": "SECURITY_AUTHORIZATION_FAILURE", "is_security_event": True, "event_type": "Authorization", "priority": "medium",
+#        "queries": [
+#            'source:* AND program:sudo AND message:"user NOT in sudoers"',
+#            'source:* AND program:mariadbd AND message:/.*denied.*/',
+#        ]
+#    },
     "SECURITY_FIREWALL_INTRUSION": {
         "label": "FIREWALL_INTRUSION", "is_security_event": True, "event_type": "Intrusion", "priority": "high",
         "queries": ['source:* AND message:"%FTD" AND message:"Intrusion Block"']
@@ -224,6 +224,7 @@ class LogFetcher(threading.Thread):
                         self._add_message_to_window(f"Query: {self.query}", curses.color_pair(2))
                         self._add_message_to_window(f"  -> No results. Retrying ({retries}/{max_retries}) in 10s...", curses.color_pair(3))
                     else:
+                        retries += 1
                         self._add_message_to_window(f"Query: {self.query}", curses.color_pair(2))
                         self._add_message_to_window("  -> No results (Category empty). Retrying in 10s...", curses.color_pair(3))
                     
@@ -668,8 +669,9 @@ def convert_to_onnx_models(
                 initial_type = [("input", StringTensorType([None, 1]))]
                 onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=11)
                 
-                add_scrollable_message(message_window, "  -> Converting to FP16...", curses.color_pair(3))
-                onnx_model = float16.convert_float_to_float16(onnx_model)
+                add_scrollable_message(message_window, "  -> Converting Vectorizer to FP16 (via internal Cast)...", curses.color_pair(3))
+                # TfIdfVectorizer MUST output FP32. By blocking it, the converter inserts a Cast to FP16 at the end.
+                onnx_model = float16.convert_float_to_float16(onnx_model, node_block_list=['TfIdfVectorizer'])
                 
                 dummy_input = skl_model.transform(["dummy text"]).toarray()
                 n_features = dummy_input.shape[1]
@@ -680,7 +682,7 @@ def convert_to_onnx_models(
                 initial_type = input_type
                 onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=11, options={"zipmap": False})
                 
-                add_scrollable_message(message_window, "  -> Converting to FP16...", curses.color_pair(3))
+                add_scrollable_message(message_window, "  -> Converting Classifier to FP16...", curses.color_pair(3))
                 onnx_model = float16.convert_float_to_float16(onnx_model)
                 
                 num_classes = len(skl_model.classes_)
