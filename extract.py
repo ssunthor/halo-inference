@@ -685,20 +685,39 @@ def convert_to_onnx_models(
         try:
             if isinstance(skl_model, TfidfVectorizer):
                 initial_type = [("input", StringTensorType([None, 1]))]
-                # Bump opset to 12 for better casting support
                 onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=12)
                 
-                add_scrollable_message(message_window, "  -> Converting Vectorizer to FP16 (via internal Cast)...", curses.color_pair(3))
-                onnx_model = float16.convert_float_to_float16(onnx_model, node_block_list=['TfIdfVectorizer'])
+                add_scrollable_message(message_window, "  -> Inserting explicit FP16 Cast node...", curses.color_pair(3))
                 
-                # Surgical fix: Ensure the Graph Output metadata matches the actual FP16 data
-                for out in onnx_model.graph.output:
-                    if out.type.tensor_type.elem_type == onnx.TensorProto.FLOAT:
-                        out.type.tensor_type.elem_type = onnx.TensorProto.FLOAT16
+                # 1. Rename the current output to an intermediate name
+                # Most skl2onnx vectorizers have one output usually named 'variable'
+                graph_output = onnx_model.graph.output[0]
+                final_output_name = graph_output.name
+                intermediate_name = final_output_name + "_fp32_internal"
+                
+                for node in onnx_model.graph.node:
+                    for i, out_name in enumerate(node.output):
+                        if out_name == final_output_name:
+                            node.output[i] = intermediate_name
+                
+                # 2. Add the Cast node (FP32 -> FP16)
+                cast_node = onnx.helper.make_node(
+                    "Cast",
+                    inputs=[intermediate_name],
+                    outputs=[final_output_name],
+                    to=onnx.TensorProto.FLOAT16
+                )
+                onnx_model.graph.node.append(cast_node)
+                
+                # 3. Update the Graph Output metadata to FLOAT16
+                graph_output.type.tensor_type.elem_type = onnx.TensorProto.FLOAT16
+                
+                # 4. Finalize shape and type inference
+                onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
                 
                 dummy_input = skl_model.transform(["dummy text"]).toarray()
                 n_features = dummy_input.shape[1]
-                output_configs = [{"name": "variable", "data_type": "TYPE_FP16", "dims": [-1, n_features]}]
+                output_configs = [{"name": final_output_name, "data_type": "TYPE_FP16", "dims": [-1, n_features]}]
                 input_data_type = "TYPE_STRING"
                 input_dims = [-1, 1]
             else:
@@ -708,10 +727,13 @@ def convert_to_onnx_models(
                 add_scrollable_message(message_window, "  -> Converting Classifier to FP16...", curses.color_pair(3))
                 onnx_model = float16.convert_float_to_float16(onnx_model)
                 
-                # Ensure output metadata is correct for classifiers too
+                # Ensure output metadata is correct for probabilities
                 for out in onnx_model.graph.output:
-                    if out.name == "probabilities" and out.type.tensor_type.elem_type == onnx.TensorProto.FLOAT:
+                    if out.name == "probabilities":
                         out.type.tensor_type.elem_type = onnx.TensorProto.FLOAT16
+
+                # Re-infer shapes for stability
+                onnx_model = onnx.shape_inference.infer_shapes(onnx_model)
 
                 num_classes = len(skl_model.classes_)
                 output_configs = [
