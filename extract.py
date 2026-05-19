@@ -591,6 +591,28 @@ input [
   }}
 ]
 {chr(10).join(output_sections)}
+
+instance_group [
+  {{
+    count: 1
+    kind: KIND_GPU
+  }}
+]
+
+parameters [
+  {{
+    key: "enable_cuda_graph"
+    value: {{ string_value: "0" }}
+  }},
+  {{
+    key: "gpu_mem_limit"
+    value: {{ string_value: "0" }}
+  }},
+  {{
+    key: "arena_extend_strategy"
+    value: {{ string_value: "kSameAsRequested" }}
+  }}
+]
 """
     return config_content
 
