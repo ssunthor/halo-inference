@@ -22,5 +22,5 @@ docker run -it --gpus all \
   -e OMP_NUM_THREADS="$CORES" \
   nvcr.io/nvidia/morpheus/morpheus:25.06-runtime \
   bash -c "conda install -y -c rapidsai -c conda-forge -c nvidia \
-  cuml scikit-learn=1.3.2 skl2onnx onnx requests mlflow && \
+  cuml scikit-learn=1.3.2 skl2onnx onnx requests mlflow onnxconverter-common && \
   python extract.py $*"

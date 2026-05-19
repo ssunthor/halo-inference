@@ -5,6 +5,8 @@ scikit-learn==1.3.2
 joblib
 tqdm
 skl2onnx
+onnx
+onnxconverter-common
 packaging
 
 

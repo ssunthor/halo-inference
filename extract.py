@@ -17,6 +17,8 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import classification_report
 import joblib
 import os
+import onnx
+from onnxconverter_common import float16
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import StringTensorType, FloatTensorType
 from sklearn.preprocessing import LabelEncoder
@@ -665,20 +667,28 @@ def convert_to_onnx_models(
             if isinstance(skl_model, TfidfVectorizer):
                 initial_type = [("input", StringTensorType([None, 1]))]
                 onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=11)
+                
+                add_scrollable_message(message_window, "  -> Converting to FP16...", curses.color_pair(3))
+                onnx_model = float16.convert_float_to_float16(onnx_model)
+                
                 dummy_input = skl_model.transform(["dummy text"]).toarray()
                 n_features = dummy_input.shape[1]
-                output_configs = [{"name": "variable", "data_type": "TYPE_FP32", "dims": [-1, n_features]}]
+                output_configs = [{"name": "variable", "data_type": "TYPE_FP16", "dims": [-1, n_features]}]
                 input_data_type = "TYPE_STRING"
                 input_dims = [-1, 1]
             else:
                 initial_type = input_type
                 onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=11, options={"zipmap": False})
+                
+                add_scrollable_message(message_window, "  -> Converting to FP16...", curses.color_pair(3))
+                onnx_model = float16.convert_float_to_float16(onnx_model)
+                
                 num_classes = len(skl_model.classes_)
                 output_configs = [
                     {"name": "label", "data_type": "TYPE_INT64", "dims": [-1]},
-                    {"name": "probabilities", "data_type": "TYPE_FP32", "dims": [-1, num_classes]}
+                    {"name": "probabilities", "data_type": "TYPE_FP16", "dims": [-1, num_classes]}
                 ]
-                input_data_type = "TYPE_FP32"
+                input_data_type = "TYPE_FP16"
                 input_dims = [-1 if d is None else d for d in input_type[0][1].shape]
 
             with open(onnx_path, "wb") as f:
