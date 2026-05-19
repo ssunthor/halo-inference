@@ -685,11 +685,16 @@ def convert_to_onnx_models(
         try:
             if isinstance(skl_model, TfidfVectorizer):
                 initial_type = [("input", StringTensorType([None, 1]))]
-                onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=11)
+                # Bump opset to 12 for better casting support
+                onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=12)
                 
                 add_scrollable_message(message_window, "  -> Converting Vectorizer to FP16 (via internal Cast)...", curses.color_pair(3))
-                # TfIdfVectorizer MUST output FP32. By blocking it, the converter inserts a Cast to FP16 at the end.
                 onnx_model = float16.convert_float_to_float16(onnx_model, node_block_list=['TfIdfVectorizer'])
+                
+                # Surgical fix: Ensure the Graph Output metadata matches the actual FP16 data
+                for out in onnx_model.graph.output:
+                    if out.type.tensor_type.elem_type == onnx.TensorProto.FLOAT:
+                        out.type.tensor_type.elem_type = onnx.TensorProto.FLOAT16
                 
                 dummy_input = skl_model.transform(["dummy text"]).toarray()
                 n_features = dummy_input.shape[1]
@@ -698,11 +703,16 @@ def convert_to_onnx_models(
                 input_dims = [-1, 1]
             else:
                 initial_type = input_type
-                onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=11, options={"zipmap": False})
+                onnx_model = convert_sklearn(skl_model, initial_types=initial_type, target_opset=12, options={"zipmap": False})
                 
                 add_scrollable_message(message_window, "  -> Converting Classifier to FP16...", curses.color_pair(3))
                 onnx_model = float16.convert_float_to_float16(onnx_model)
                 
+                # Ensure output metadata is correct for classifiers too
+                for out in onnx_model.graph.output:
+                    if out.name == "probabilities" and out.type.tensor_type.elem_type == onnx.TensorProto.FLOAT:
+                        out.type.tensor_type.elem_type = onnx.TensorProto.FLOAT16
+
                 num_classes = len(skl_model.classes_)
                 output_configs = [
                     {"name": "label", "data_type": "TYPE_INT64", "dims": [-1]},
