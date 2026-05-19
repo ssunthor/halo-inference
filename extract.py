@@ -601,16 +601,12 @@ instance_group [
 
 parameters [
   {{
-    key: "enable_cuda_graph"
-    value: {{ string_value: "0" }}
-  }},
-  {{
-    key: "gpu_mem_limit"
+    key: "execution_mode"
     value: {{ string_value: "0" }}
   }},
   {{
     key: "arena_extend_strategy"
-    value: {{ string_value: "kSameAsRequested" }}
+    value: {{ string_value: "1" }}
   }}
 ]
 """
